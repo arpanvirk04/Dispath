@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>TomTom Map with Search, Traffic, and Routing</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- TomTom Maps SDK styles -->
+  <link rel="stylesheet" href="https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.25.0/maps/maps.css">
+
+  <!-- TomTom SearchBox styles -->
+  <link rel="stylesheet" href="https://api.tomtom.com/maps-sdk-for-web/cdn/plugins/SearchBox/3.1.3-public-preview.0/SearchBox.css">
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    .sidebar {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      background: white;
+      padding: 15px;
+      border-radius: 5px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      width: 280px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar label {
+      margin-top: 10px;
+      font-weight: bold;
+    }
+
+    .sidebar input[type="text"] {
+      width: 100%;
+      padding: 6px;
+      margin-top: 4px;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+
+    .sidebar button {
+      margin-top: 12px;
+      padding: 10px;
+      background-color: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .sidebar button:hover {
+      background-color: #1976D2;
+    }
+
+    .sidebar .toggle-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 12px;
+    }
+
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 34px;
+      height: 20px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 34px;
+    }
+
+    .toggle:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+
+    input:checked + .toggle {
+      background-color: #2196F3;
+    }
+
+    input:checked + .toggle:before {
+      transform: translateX(14px);
+    }
+
+    #info {
+      margin-top: 10px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="sidebar">
+  <div id="search-container-inner"></div>
+
+  <label for="origin">Origin:</label>
+  <input type="text" id="origin" placeholder="e.g. Toronto">
+
+  <label for="destination">Destination:</label>
+  <input type="text" id="destination" placeholder="e.g. Ottawa">
+
+  <button onclick="handleRouting()">Get Route</button>
+
+  <div class="toggle-label">
+    <label for="flow-toggle">Traffic Flow</label>
+    <label class="switch">
+      <input id="flow-toggle" type="checkbox" checked>
+      <span class="toggle round"></span>
+    </label>
+  </div>
+
+  <div class="toggle-label">
+    <label for="incidents-toggle">Traffic Incidents</label>
+    <label class="switch">
+      <input id="incidents-toggle" type="checkbox">
+      <span class="toggle round"></span>
+    </label>
+  </div>
+
+  <div id="info"></div>
+</div>
+
+<script src="https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.25.0/maps/maps-web.min.js"></script>
+<script src="https://api.tomtom.com/maps-sdk-for-web/cdn/plugins/SearchBox/3.1.3-public-preview.0/SearchBox-web.js"></script>
+<script src="https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.25.0/services/services-web.min.js"></script>
+<script>
+  const apiKey = "aTibKbz0ENEQkhPzIC23Je4K3AGyVQft";
+  const map = tt.map({ key: apiKey, container: "map", center: [-79.3832, 43.6532], zoom: 6 });
+  map.addControl(new tt.FullscreenControl());
+  map.addControl(new tt.NavigationControl());
+  map.on('load', () => map.showTrafficFlow());
+
+  document.getElementById('flow-toggle').addEventListener('change', e => e.target.checked ? map.showTrafficFlow() : map.hideTrafficFlow());
+  document.getElementById('incidents-toggle').addEventListener('change', e => e.target.checked ? map.showTrafficIncidents() : map.hideTrafficIncidents());
+
+  const searchBox = new tt.plugins.SearchBox(tt.services, {
+    searchOptions: { key: apiKey, language: "en-GB", limit: 5 },
+    autocompleteOptions: { key: apiKey, language: "en-GB" }
+  });
+  document.getElementById("search-container-inner").appendChild(searchBox.getSearchBoxHTML());
+
+  const searchMarkersManager = new SearchMarkersManager(map);
+  searchBox.on("tomtom.searchbox.resultsfound", e => { searchMarkersManager.draw(e.data.results.fuzzySearch.results); fitToViewport(e.data.results.fuzzySearch.results); });
+  searchBox.on("tomtom.searchbox.resultselected", e => { searchMarkersManager.draw([e.data.result]); fitToViewport(e.data.result); });
+  searchBox.on("tomtom.searchbox.resultfocused", e => { searchMarkersManager.draw([e.data.result]); fitToViewport(e.data.result); });
+  searchBox.on("tomtom.searchbox.resultscleared", () => searchMarkersManager.clear());
+
+  function fitToViewport(markerData) {
+    if (!markerData || markerData.length === 0) return;
+    const bounds = new tt.LngLatBounds();
+    (Array.isArray(markerData) ? markerData : [markerData]).forEach(item => bounds.extend([item.position.lng || item.position.lon, item.position.lat]));
+    map.fitBounds(bounds, { padding: 100, linear: true });
+  }
+
+  function SearchMarkersManager(map) {
+    this.map = map;
+    this.markers = {};
+  }
+  SearchMarkersManager.prototype.draw = function (poiList) {
+    this.clear();
+    poiList.forEach(poi => {
+      const id = poi.id || Math.random().toString(36).substr(2, 9);
+      this.markers[id] = new tt.Marker().setLngLat([poi.position.lng || poi.position.lon, poi.position.lat]).addTo(this.map);
+    });
+  };
+  SearchMarkersManager.prototype.clear = function () {
+    Object.values(this.markers).forEach(marker => marker.remove());
+    this.markers = {};
+  };
+
+  async function handleRouting() {
+    const originName = document.getElementById("origin").value.trim();
+    const destinationName = document.getElementById("destination").value.trim();
+    if (!originName || !destinationName) return alert("Enter both origin and destination.");
+    try {
+      const origin = await geocode(originName);
+      const destination = await geocode(destinationName);
+      const routeData = await tt.services.calculateRoute({ key: apiKey, locations: `${origin[1]},${origin[0]}:${destination[1]},${destination[0]}`, traffic: true });
+      const route = routeData.routes[0].summary;
+      const geojson = routeData.toGeoJson();
+      if (map.getLayer("route")) map.removeLayer("route");
+      if (map.getSource("route")) map.removeSource("route");
+      map.addLayer({ id: "route", type: "line", source: { type: "geojson", data: geojson }, paint: { "line-color": "#007AFF", "line-width": 5 } });
+      document.getElementById("info").innerHTML = `<strong>From:</strong> ${originName}<br><strong>To:</strong> ${destinationName}<br><strong>Distance:</strong> ${(route.lengthInMeters / 1000).toFixed(1)} km<br><strong>Estimated Time:</strong> ${Math.round(route.travelTimeInSeconds / 60)} minutes`;
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
+  }
+
+  async function geocode(place) {
+    const res = await fetch(`https://api.tomtom.com/search/2/geocode/${encodeURIComponent(place)}.json?key=${apiKey}`);
+    const data = await res.json();
+    if (!data.results.length) throw new Error("Place not found: " + place);
+    const pos = data.results[0].position;
+    return [pos.lat, pos.lon];
+  }
+</script>
+</body>
+</html>
