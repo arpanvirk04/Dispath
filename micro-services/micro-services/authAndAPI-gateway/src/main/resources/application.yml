@@ -1,0 +1,55 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: authAndAPI-gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: customer-service
+              uri: lb://customerAndOrder-service
+              predicates:
+                - Path=/api/customers/**
+            - id: order-service
+              uri: lb://customerAndOrder-service
+              predicates:
+                - Path=/api/orders/**
+            - id: routing-service
+              uri: lb://routing-service
+              predicates:
+                - Path=/api/routes/**
+            - id: driver-service
+              uri: lb://driverAndTracking-service
+              predicates:
+                - Path=/api/drivers/**
+              filters:
+                - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials RETAIN_FIRST
+            - id: driver-invite-service
+              uri: lb://driverAndTracking-service
+              predicates:
+                - Path=/api/driver-invites,/api/driver-invites/**
+              filters:
+                - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials RETAIN_FIRST
+          globalcors:
+            cors-configurations:
+              "[/**]":
+                allowedOrigins:
+                  - http://localhost:5173
+                allowedMethods:
+                  - GET
+                  - POST
+                  - PUT
+                  - DELETE
+                  - OPTIONS
+                allowedHeaders:
+                  - "*"
+                allowCredentials: true
+
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
